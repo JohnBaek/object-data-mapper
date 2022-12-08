@@ -6,7 +6,9 @@ using Microsoft.Extensions.Configuration;
 using ObjectDataMapper.Models;
 using Oracle.ManagedDataAccess.Client;
 
-namespace ObjectDataMapper.Providers; public class ObjectMapperProvider
+namespace ObjectDataMapper.Providers; 
+
+public class ObjectMapperProvider
 {
     /// <summary>
     /// 설정파일
@@ -16,7 +18,7 @@ namespace ObjectDataMapper.Providers; public class ObjectMapperProvider
     /// <summary>
     /// 생성자 
     /// </summary>
-    /// <param name="configuration"></param>
+    /// <param name="configuration">설정파일 객체</param>
     public ObjectMapperProvider(IConfiguration configuration)
     {
         Configuration = configuration;
@@ -40,20 +42,20 @@ namespace ObjectDataMapper.Providers; public class ObjectMapperProvider
             
             if (tables.Count == 0)
             {
-                Console.WriteLine("Table Count 0");
+                Console.WriteLine("Table Count 0!");
                 return;
             }
             
             // 테이블에 주석을 삽입한다.
-            await AddComments(connection,tables);
+            await AddCommentsToTable(connection,tables);
+            await connection.CloseAsync();
+            
+            Console.WriteLine("Connection Close . .");
             
             // 엑셀을 출력한다.
             string exportedExcelFilePath = ExportExcel(tables);
             
-            Console.WriteLine($"Expoted Excel Completed : {exportedExcelFilePath}");
-
-            await connection.CloseAsync();
-            Console.WriteLine("Connection Close . .");
+            Console.WriteLine($"Exported Excel Completed : {exportedExcelFilePath}");
         }
         catch (Exception ex)
         {
@@ -116,7 +118,6 @@ namespace ObjectDataMapper.Providers; public class ObjectMapperProvider
             
             // 기본 워크시트 생성
             Worksheet sheet = GetDefaultWorksheet(out rows);
-            
 
             int currentRow = 1;
             
@@ -124,25 +125,25 @@ namespace ObjectDataMapper.Providers; public class ObjectMapperProvider
             foreach (ResponseTable table in tables)
             {
                 // 테이블명 삽입
-                rows.Add(new Row(++currentRow , new List<Cell>(){new Cell(1, table.Name)}) );
-
+                rows.Add(new Row(++currentRow , new List<Cell>{ new(1, table.Name) } ));
                 
                 // 모든컬럼에 대해 처리 
                 foreach (ResponseColumn column in table.columns)
                 {
                     List<Cell> cells = new List<Cell>();
-                    // 컬럼명
+
+                    // 셀에 컬럼명을 추가한다.
                     cells.Add(new Cell(2,column.Name));
                     
-                    // 주석이 없는 경우 
-                    if(String.IsNullOrWhiteSpace(column.Comments))
-                        cells.Add(new Cell(3,"-"));
-                    // 주석이 있는경우 
-                    else
-                        cells.Add(new Cell(3,column.Comments));
-                    
-                    // 한줄 추가
-                    rows.Add(new Row(currentRow++ , cells ));
+                    // 셀에 주석을 추가한다.
+                    cells.Add(String.IsNullOrWhiteSpace(column.Comments)
+                        // 주석이 없는 경우 
+                        ? new Cell(3, "-")
+                        // 주석이 있는경우 
+                        : new Cell(3, column.Comments));
+
+                    // 행 추가
+                    rows.Add(new Row(currentRow++,cells));
                 }
             }
    
@@ -160,7 +161,7 @@ namespace ObjectDataMapper.Providers; public class ObjectMapperProvider
     /// 헤더를 포함한 기본 워크시트를 리턴한다.
     /// </summary>
     /// <returns></returns>
-    private Worksheet GetDefaultWorksheet(out List<Row> rows)
+    private static Worksheet GetDefaultWorksheet(out List<Row> rows)
     {
         // 처리할 첫번재 워크시트 : 주석이 달리지않은 컬럼
         Worksheet newWorkSheet = new Worksheet();
@@ -171,16 +172,18 @@ namespace ObjectDataMapper.Providers; public class ObjectMapperProvider
             rows = new List<Row>();
             
             // 셀 설정 ( 헤더 )
-            List<Cell> headerCells = new List<Cell>();
-            
-            // 헤더추가 
-            headerCells.Add(new Cell(1, "테이블명"));
-            headerCells.Add(new Cell(2, "컬럼명"));
-            headerCells.Add(new Cell(3, "주석"));
-            
+            List<Cell> headerCells = new List<Cell>
+            {
+                // 헤더추가 
+                new (1, "테이블명"),
+                new (2, "컬럼명"),
+                new (3, "주석")
+            };
+
             // 헤더로우 추가
             rows.Add(new Row(1,headerCells));
 
+            // 완성된 Row 를 워크스트에 삽입
             newWorkSheet.Rows = rows;
         }
         catch (Exception e)
@@ -196,9 +199,8 @@ namespace ObjectDataMapper.Providers; public class ObjectMapperProvider
     /// 파일 및 디렉토리를 초기화하고 목적지 파일을 리턴한다.
     /// </summary>
     /// <returns></returns>
-    private FileInfo InitializeFileInfo()
+    private static FileInfo InitializeFileInfo()
     {
-        FileInfo fileInfo = null;
         try
         {
             // 디렉토리 루트 
@@ -234,27 +236,25 @@ namespace ObjectDataMapper.Providers; public class ObjectMapperProvider
             Console.WriteLine(e);
             throw;
         }
-
-        return fileInfo;
     }
 
     /// <summary>
     /// 주석을 삽입한다.
     /// </summary>
-    /// <param name="connection"></param>
-    /// <param name="tables"></param>
+    /// <param name="connection">커넥션 정보</param>
+    /// <param name="dataList"></param>
     /// <exception cref="NotImplementedException"></exception>
-    private async Task AddComments(OracleConnection connection, List<ResponseTable> tables)
+    private static async Task AddCommentsToTable(OracleConnection connection, List<ResponseTable> dataList)
     {
-        Console.WriteLine("AddComments . .");
         StringBuilder query = new StringBuilder();
         int processCount = 0;
+        int totalRows = dataList.Count;
         try
         {
             // 모든테이블에 대해 처리한다.
-            foreach (ResponseTable table in tables)
+            foreach (ResponseTable table in dataList)
             {
-                Console.WriteLine($"[{++processCount}/{tables.Count}] TABLE : { table.Name }");
+                Console.WriteLine($"[{++processCount}/{totalRows}] Process Table : { table.Name }");
                 
                 // 커맨드 객체를 만든다.
                 OracleCommand oracleCommand = new OracleCommand();
@@ -289,15 +289,15 @@ namespace ObjectDataMapper.Providers; public class ObjectMapperProvider
                     });
 
                     // 주석이 비어있는 경우 
-                    if (String.IsNullOrWhiteSpace(comments))
+                    if (string.IsNullOrWhiteSpace(comments))
                         isHaveAllComments = false;
                 }
 
                 table.HasCommentInAllColumns = isHaveAllComments;
             }
 
-            Console.WriteLine($"컬럼에 전체 주석이 존재하는 테이블 수: { tables.Count(i => i.HasCommentInAllColumns) }");
-            Console.WriteLine($"컬럼에 전체 주석이 하나라도 없는 테이블 수: { tables.Count(i => !i.HasCommentInAllColumns) }");
+            Console.WriteLine($"컬럼에 전체 주석이 존재하는 테이블 수: { dataList.Count(i => i.HasCommentInAllColumns) }");
+            Console.WriteLine($"컬럼에 전체 주석이 하나라도 없는 테이블 수: { dataList.Count(i => !i.HasCommentInAllColumns) }");
         }
         catch (Exception e)
         {
@@ -311,7 +311,7 @@ namespace ObjectDataMapper.Providers; public class ObjectMapperProvider
     /// </summary>
     /// <param name="connection"></param>
     /// <returns></returns>
-    private async Task<List<ResponseTable>> GatheringTables(OracleConnection connection)
+    private static async Task<List<ResponseTable>> GatheringTables(OracleConnection connection)
     {
         Console.WriteLine("GatheringTables . .");
         List<ResponseTable> result = new List<ResponseTable>();
